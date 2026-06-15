@@ -8,3 +8,5 @@ __pycache__/
 .DS_Store
 files.zip
 files/
+steward.db
+*.db

@@ -57,6 +57,10 @@ class Config:
     splunk_container: str = os.getenv("STEWARD_SPLUNK_CONTAINER", "splunk")
     container_data_dir: str = os.getenv("STEWARD_CONTAINER_DATA_DIR", "/tmp/steward_datasets")
 
+    # Run store — a single SQLite file backing run history, logs, and durable
+    # HITL checkpoints (see WORKFLOW_DESIGN.md §8).
+    db_path: str = os.getenv("STEWARD_DB", "steward.db")
+
     def validate(self) -> None:
         _require("SPLUNK_MCP_TOKEN")
         _require("GROQ_API_KEY")
