@@ -14,6 +14,7 @@ SQLite checkpoint cleanly.
 
 from __future__ import annotations
 
+import json
 import time
 
 from .config import CONFIG
@@ -23,6 +24,12 @@ from .workflow import Engine, Node, Workflow
 PREVIEW_INDEX = "steward_preview"
 POLL_TRIES = 6
 POLL_SLEEP = 5
+
+
+def _stanza_text(sourcetype: str, settings: dict) -> str:
+    if not settings:
+        return f"# no existing [{sourcetype}] stanza — Splunk default parsing"
+    return f"[{sourcetype}]\n" + "\n".join(f"{k} = {v}" for k, v in settings.items())
 
 
 def _as_proposal(d: dict):
@@ -111,27 +118,40 @@ def build_onboarding_workflow(store: RunStore) -> Workflow:
         return {"baseline_sourcetype": base_st}
 
     def measure(ctx):
-        proposed = ctx["propose_config"]["sourcetype"]
+        # "after" is the PREVIEW sourcetype (proposed props applied only there);
+        # "before" is the same sample under Splunk's defaults.
+        preview = ctx["preview_ingest"]["sourcetype"]
         baseline = ctx["baseline_probe"]["baseline_sourcetype"]
-        events_after = _count_events(proposed)
+        events_after = _count_events(preview)
         events_before = _count_events(baseline)
         return {"events_before": events_before, "events_after": events_after,
-                "ts_ok_pct": _timestamp_ok_pct(proposed)}
+                "ts_ok_pct": _timestamp_ok_pct(preview)}
 
     def apply_config(ctx):
-        from . import onboarding
-        return onboarding.apply_proposal(_as_proposal(ctx["propose_config"]))
+        # Capture the FINAL sourcetype's pre-apply state (post-modify) for an honest
+        # diff, then write the real config.
+        from . import onboarding, splunk_rest
+        prop = ctx["propose_config"]
+        existing = splunk_rest.read_conf_stanza("props", prop["sourcetype"])
+        before_keys = {k: existing[k] for k in prop["props"] if k in existing}
+        result = onboarding.apply_proposal(_as_proposal(prop))
+        return {"applied": result, "before_keys": before_keys}
 
     def record_change(ctx):
         prop = ctx["propose_config"]
         m = ctx["measure"]
+        # Diff reflects the FINAL applied config (after any human modify), not the
+        # pre-modify proposal captured earlier by read_current/render_diff.
+        before_text = _stanza_text(prop["sourcetype"], ctx["apply_config"]["before_keys"])
+        after_text = _stanza_text(prop["sourcetype"], prop["props"])
         store.record_change(
             ctx["run_id"],
             conf="props", stanza=prop["sourcetype"], app=CONFIG.target_app,
-            before_text=ctx["read_current"]["before_text"], after_text=ctx["render_diff"]["stanza_text"],
+            before_text=before_text, after_text=after_text,
             events_before=m["events_before"], events_after=m["events_after"],
             ts_ok_pct=m["ts_ok_pct"], fields_extracted=len(prop["props"]),
             modified_by_human=1 if prop.get("_modified_by_human") else 0,
+            provenance_json=json.dumps(prop.get("_provenance", [])),
         )
         return {"recorded": True, "events": [m["events_before"], m["events_after"]]}
 
@@ -147,12 +167,17 @@ def build_onboarding_workflow(store: RunStore) -> Workflow:
         }
 
     def patch_review(ctx, patch):
-        """Merge a human's edits into the proposal, and flag the run as modified."""
+        """Merge a human's edits into the proposal, recording field-level provenance
+        (what the LLM proposed vs. what the human changed it to) for the change record."""
         prop = ctx["propose_config"]
+        prov = prop.get("_provenance", [])
         if "sourcetype" in patch:
+            prov.append({"field": "sourcetype", "llm": prop["sourcetype"], "human": patch["sourcetype"]})
             prop["sourcetype"] = patch["sourcetype"]
-        if "props" in patch:
-            prop["props"].update(patch["props"])
+        for key, value in patch.get("props", {}).items():
+            prov.append({"field": f"props.{key}", "llm": prop["props"].get(key), "human": value})
+            prop["props"][key] = value
+        prop["_provenance"] = prov
         prop["_modified_by_human"] = True
 
     def ask_apply(ctx):

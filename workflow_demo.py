@@ -11,6 +11,7 @@ Run:  source .venv/bin/activate && python workflow_demo.py
 
 from pathlib import Path
 
+from steward import splunk_rest
 from steward.flows import default_engine
 from steward.history import format_change_card, format_history
 from steward.runstore import RunStore
@@ -37,18 +38,33 @@ def main():
     print("ask:", ask.prompt)
     assert run.status == "waiting" and run.waiting_node == "hitl_review"
 
-    # 2) Resume with a MODIFY — human flips SHOULD_LINEMERGE off (the classic fix).
+    # 2) Resume with a MODIFY — human flips SHOULD_LINEMERGE off (the classic fix) and
+    #    renames the sourcetype to a unique demo name (so the isolation check below is
+    #    deterministic — no leftover stanza from prior runs).
+    real_st = f"steward_demo_{run.run_id}"
     run = engine.resume(run.run_id, {"action": "modify",
-                                     "patch": {"props": {"SHOULD_LINEMERGE": "false"}}})
-    show(run, "2. RESUMED (modify) → ingest+verify ran → paused at second gate")
+                                     "patch": {"sourcetype": real_st,
+                                               "props": {"SHOULD_LINEMERGE": "false"}}})
+    show(run, "2. RESUMED (modify) → preview+baseline+measure ran → paused at second gate")
     ask = store.pending_hitl(run.run_id)
     print("ask:", ask.prompt)
     assert run.status == "waiting" and run.waiting_node == "hitl_apply"
+
+    # --- PROVE preview isolation: real props.conf is NOT written before the apply gate.
+    before_apply = splunk_rest.read_conf_stanza("props", real_st)
+    print(f"\nisolation check — real [{real_st}] before apply: "
+          f"{'EMPTY (good)' if not before_apply else 'WRITTEN (bad!)'}")
+    assert not before_apply, "real sourcetype was written before the apply gate!"
 
     # 3) Resume with APPROVE — config is applied, change recorded, run completes.
     run = engine.resume(run.run_id, {"action": "approve"})
     show(run, "3. RESUMED (approve) → applied → DONE")
     assert run.status == "ok", f"expected ok, got {run.status}"
+
+    after_apply = splunk_rest.read_conf_stanza("props", real_st)
+    wrote = after_apply.get("SHOULD_LINEMERGE")
+    print(f"isolation check — real [{real_st}] after apply: SHOULD_LINEMERGE={wrote} (now written)")
+    assert after_apply, "real sourcetype should be written after apply"
 
     # --- the observability payload the UI will render --------------------------
     print("\n=== EXECUTION LOG ===")

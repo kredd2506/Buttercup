@@ -78,18 +78,25 @@ def apply_proposal(proposal: OnboardingProposal) -> dict:
 
 
 def preview_ingest(filepath: str, proposal: OnboardingProposal) -> dict:
-    """Ingest the sample into a throwaway index so the user can verify parsing.
+    """Ingest the sample into a throwaway index under a PREVIEW-ONLY sourcetype.
+
+    The proposed props are applied to ``<sourcetype>__preview`` — never the real
+    sourcetype — so previewing does not change live config. The real sourcetype is
+    written only by ``apply_proposal`` after the human approves, which keeps the
+    apply gate authoritative.
 
     Stages the host file into the Splunk container first (Splunk reads from the
-    container filesystem, not the host). Returns enough detail for the UI to run
-    a follow-up search and show the parsed events.
+    container filesystem, not the host). Returns the preview sourcetype + a verify
+    search the UI can run to show parsed events.
     """
+    preview_st = f"{proposal.sourcetype}__preview"
     splunk_rest.ensure_index(PREVIEW_INDEX)
-    splunk_rest.apply_conf_stanza("props", proposal.sourcetype, proposal.props)
+    splunk_rest.apply_conf_stanza("props", preview_st, proposal.props)
     container_path = container.stage_file(filepath)
-    splunk_rest.oneshot_ingest(container_path, PREVIEW_INDEX, proposal.sourcetype)
+    splunk_rest.oneshot_ingest(container_path, PREVIEW_INDEX, preview_st)
     return {
         "index": PREVIEW_INDEX,
-        "sourcetype": proposal.sourcetype,
-        "verify_spl": f'index={PREVIEW_INDEX} sourcetype={proposal.sourcetype}',
+        "sourcetype": preview_st,
+        "real_sourcetype": proposal.sourcetype,
+        "verify_spl": f'index={PREVIEW_INDEX} sourcetype={preview_st}',
     }

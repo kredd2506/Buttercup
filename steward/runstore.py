@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS changes (
     ts_ok_pct          REAL,
     fields_extracted   INTEGER,
     modified_by_human  INTEGER DEFAULT 0,
+    provenance_json    TEXT,                    -- field-level LLM→human edits (modify-and-rerun)
     created_at         TEXT NOT NULL,
     PRIMARY KEY (run_id)
 );

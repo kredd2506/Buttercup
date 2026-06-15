@@ -7,9 +7,21 @@ the Streamlit/React/CLI layers all render the same structures produced here.
 from __future__ import annotations
 
 import difflib
+import json
 from typing import Optional
 
 from .runstore import RunRecord
+
+
+def provenance(run: RunRecord) -> list[dict]:
+    """Field-level human edits (LLM value → human value) recorded during a modify."""
+    ch = run.change
+    if not ch or not ch.get("provenance_json"):
+        return []
+    try:
+        return json.loads(ch["provenance_json"])
+    except (ValueError, TypeError):
+        return []
 
 
 def change_diff(run: RunRecord) -> str:
@@ -72,4 +84,8 @@ def format_change_card(run: RunRecord) -> str:
         f"  fields extracted  {ch['fields_extracted']}",
         f"  modified by human {bool(ch['modified_by_human'])}",
     ]
+    prov = provenance(run)
+    if prov:
+        out.append("  human edits (LLM → human):")
+        out += [f"    {p['field']}: {p['llm']!r} → {p['human']!r}" for p in prov]
     return "\n".join(out)
