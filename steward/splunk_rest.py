@@ -34,6 +34,27 @@ def _post(path: str, data: dict) -> requests.Response:
     return resp
 
 
+def read_conf_stanza(conf: str, stanza: str, app: str | None = None) -> dict:
+    """Read the current effective settings of a .conf stanza, or {} if it doesn't exist.
+
+    Used to capture the *real* "before" state for a change record's diff. Splunk
+    returns all effective keys (including inherited defaults); callers typically
+    narrow this to just the keys they intend to change.
+    """
+    app = app or CONFIG.target_app
+    resp = requests.get(
+        f"{_BASE}/servicesNS/nobody/{app}/configs/conf-{conf}/{stanza}",
+        params={"output_mode": "json"},
+        auth=_AUTH,
+        verify=CONFIG.verify_ssl,
+        timeout=30,
+    )
+    if resp.status_code == 404:
+        return {}
+    resp.raise_for_status()
+    return resp.json()["entry"][0]["content"]
+
+
 def apply_conf_stanza(conf: str, stanza: str, settings: dict[str, str]) -> dict:
     """Create/update a stanza in a .conf file (e.g. conf='props', stanza='my:sourcetype').
 

@@ -12,6 +12,7 @@ Run:  source .venv/bin/activate && python workflow_demo.py
 from pathlib import Path
 
 from steward.flows import default_engine
+from steward.history import format_change_card, format_history
 from steward.runstore import RunStore
 
 
@@ -55,15 +56,10 @@ def main():
         print(f"  {entry['ts'][11:19]} [{entry['level']:<7}] {entry['message']}")
 
     print("\n=== CHANGE RECORD (what changed & improved) ===")
-    ch = run.change
-    print(f"  stanza [{ch['stanza']}] in app '{ch['app']}'")
-    print(f"  events parsed: {ch['events_before']} → {ch['events_after']}")
-    print(f"  fields: {ch['fields_extracted']}   modified_by_human: {bool(ch['modified_by_human'])}")
+    print(format_change_card(run))
 
     print("\n=== RUN HISTORY (list_runs) ===")
-    for r in store.list_runs():
-        delta = f"{r['events_before']} → {r['events_after']}" if r["events_after"] is not None else "—"
-        print(f"  {r['started_at'][11:19]}  {r['status']:<9} {r['workflow']:<11} Δevents={delta}")
+    print(format_history(store.list_runs()))
 
     print("\n✅ HITL pause/resume cycle proven end-to-end.")
 
