@@ -1,0 +1,8 @@
+.env
+.secrets/
+.splunk_admin_password
+.steward_user_password
+.venv/
+__pycache__/
+*.pyc
+.DS_Store

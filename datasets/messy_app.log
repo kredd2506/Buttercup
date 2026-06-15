@@ -1,0 +1,20 @@
+[14/Jun/2026 09:12:03.221] INFO  svc=auth user=jdoe action=login result=OK ip=10.2.4.18
+14-06-2026 09:12:05 | WARN | svc=auth | user=jdoe | rate-limit near threshold (28/30)
+2026.06.14 09:12:07,884 ERROR auth - login failed for user=msmith reason="bad password" ip=10.2.4.91
+>>> 1718354829 svc=payments txn=TX-99812 amount=42.10 currency=USD status=PENDING
+Jun 14 09:13:51 payments[4471]: TX-99812 settled in 1.84s status=OK
+*** MULTILINE EVENT START ***
+svc=orders order_id=A-55021
+  items=3
+  total=128.99
+  customer=msmith
+  note: gift wrap requested; deliver after 5pm
+*** MULTILINE EVENT END ***
+09:14:22 orders A-55021 -> fulfillment queued
+[ERROR][2026/06/14 09:15:01] svc=inventory sku=BOLT-12 qty=-4 (negative stock!) warehouse=W3
+2026-06-14T09:15:33Z svc=inventory sku=BOLT-12 reconciled qty=96 warehouse=W3
+GET /api/v2/orders/A-55021 200 41ms ua="Steward/1.0"
+GET /api/v2/orders/A-99999 404 7ms ua="curl/8.4"
+14/Jun/2026:09:16:48 +0000 svc=auth user=admin action=token_create scope=mcp_read result=OK
+unparseable :: ~~~ heartbeat ~~~ node=splunk-idx-1 epoch=1718354931 load=0.74
+2026-06-14 09:17:10.005Z [CRITICAL] svc=payments gateway timeout after 30000ms txn=TX-99813 retry=3
